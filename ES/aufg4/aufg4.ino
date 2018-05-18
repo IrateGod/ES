@@ -1,20 +1,26 @@
 #include <DueTimer.h>
+#define CWCCW true
+#define CCWCW false
+#define ROT_CW 0
+#define ROT_CCW 1
+#define ROT_STOP 2
 
 auto motor_pwm = 6;
 auto dec_button_pin = 31;
 auto inc_button_pin = 43;
 auto motor_input_1 = 47;
 auto motor_input_2 = 49;
-volatile auto dec_button_state = HIGH;
-volatile auto inc_button_state = HIGH;
-volatile auto previous_dec_state = HIGH;
-volatile auto previous_inc_state = HIGH;
-boolean motor_mode = true;
-int incButtonActiveMSCount = 0;
-int decButtonActiveMSCount = 0;
-char intensity = 0;
+volatile int dec_button_state;
+volatile int inc_button_state;
+volatile int previous_dec_state;
+volatile int previous_inc_state;
+bool motor_mode;
+int incButtonActiveMSCount;
+int decButtonActiveMSCount;
+char intensity;
 int intensity_step = 16;
 int minThreshold = 10;
+int rotation;
 
 DueTimer dec_timer;
 DueTimer inc_timer;
@@ -36,6 +42,7 @@ void changeIncButtonState()
 void changeMode()
 {
   Serial.println("changeMode");
+  Serial.println(motor_mode);
   motor_mode = !motor_mode;
 }
 
@@ -53,13 +60,32 @@ void checkDecButtonState(void)
   if (decButtonActiveMSCount > minThreshold)
   {
     changeDecButtonState();
-    if (dec_button_state == LOW && inc_button_state == LOW)
+    if (current_button_state == HIGH && inc_button_state == HIGH && previous_inc_state == LOW)
     {
       changeMode();
+      return;
     }
     if (current_button_state == HIGH)
     {
-      intensity = intensity - intensity_step;
+      if (motor_mode == CWCCW)
+      {
+        if (rotation == ROT_CW)
+        {
+          rotation = ROT_STOP;
+        }
+        else if (rotation == ROT_STOP)
+        {
+          rotation = ROT_CCW;
+        }
+        else
+        {
+          rotation = ROT_CW;
+        }
+      }
+      else
+      {
+       intensity = intensity - intensity_step; 
+      }
     }
     decButtonActiveMSCount = 0;
   }
@@ -78,16 +104,47 @@ void checkIncButtonState(void)
   }
   if (incButtonActiveMSCount > minThreshold)
   {
+    if (dec_button_state == HIGH && current_button_state == HIGH)
+    {
+      return;
+    }
     changeIncButtonState();
     if (current_button_state == HIGH)
     {
-       intensity = intensity + intensity_step;
+      if (motor_mode = CWCCW)
+      {
+        if (rotation == ROT_CCW)
+        {
+          rotation = ROT_STOP;
+        }
+        else if (rotation == ROT_STOP)
+        {
+          rotation = ROT_CW;
+        }
+        else
+        {
+          rotation = ROT_CCW;
+        }
+      }
+      else
+      {
+        intensity = intensity + intensity_step;
+      }
     }
     incButtonActiveMSCount = 0;
   }
 }
 
 void setup() {
+  dec_button_state = HIGH;
+  inc_button_state = HIGH;
+  previous_dec_state = HIGH;
+  previous_inc_state = HIGH;
+  motor_mode = CWCCW;
+  incButtonActiveMSCount = 0;
+  decButtonActiveMSCount = 0;
+  intensity = 0;
+  rotation = ROT_CW;
   Serial.begin(115200);
   pinMode(motor_pwm, OUTPUT);
   pinMode(dec_button_pin, INPUT);
@@ -106,5 +163,11 @@ void setup() {
 
 void loop() {
   analogWrite(motor_pwm, intensity);
-  digitalWrite(motor_input_1, HIGH);
+  switch (rotation)
+  {
+    case ROT_CW: digitalWrite(motor_input_1, HIGH); break;
+    case ROT_CCW: digitalWrite(motor_input_2, HIGH); break;
+    case ROT_STOP: digitalWrite(motor_input_1, LOW); digitalWrite(motor_input_2, LOW); break;
+    default: break;
+  }
 }
