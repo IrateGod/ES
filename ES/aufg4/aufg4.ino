@@ -10,6 +10,8 @@ auto dec_button_pin = 31;
 auto inc_button_pin = 43;
 auto motor_input_1 = 47;
 auto motor_input_2 = 49;
+auto led_red = 9;
+auto led_green = 8;
 bool motor_mode;
 int incButtonActiveMSCount;
 int decButtonActiveMSCount;
@@ -24,6 +26,7 @@ bool inc_button_pressed;
 bool dec_button_pressed;
 bool both_button_pressed;
 char intensity;
+int int_percent = 0;
 int intensity_step = 16;
 int minThreshold = 10;
 int rotation;
@@ -35,10 +38,10 @@ DueTimer both_timer;
 
 void changeMode()
 {
-  Serial.println("changeMode");
-  Serial.println(motor_mode);
-  Serial.println(rotation);
-  Serial.println((int) intensity);
+  //Serial.println("changeMode");
+  //Serial.println(motor_mode);
+  //Serial.println(rotation);
+  //Serial.println((int) intensity);
   motor_mode = !motor_mode;
 }
 
@@ -66,7 +69,7 @@ void checkDecButtonState(void)
       isBothButtonPressed = true;
       if (decButtonReleasedMSCount > minThreshold && incButtonReleasedMSCount > minThreshold)
       {
-        Serial.println("both released");
+        //Serial.println("both released");
         both_button_pressed = true;
         inc_button_pressed = false;
         dec_button_pressed = false;
@@ -137,7 +140,26 @@ void checkBothButtonState(void)
     bothButtonReleasedMSCount = 0;
   }
 }
-
+void monitor_output (void)
+{
+  switch (motor_mode)
+  {
+    case CH_INT: Serial.print("[POWER MODE] Motor Direction: ");break;
+    case CH_ROT: Serial.print("[DIRECTION MODE] Moter Direction: "); break;
+    default: break;
+  }
+  switch (rotation)
+  {
+    case ROT_CCW: Serial.print("(CCW) - STOP - CW | ");break;
+    case ROT_STOP: Serial.print("CCW - (STOP) - CW | ");break;
+    case ROT_CW: Serial.print("CCW - STOP - (CW) | ");break;
+    default: break;
+  }
+  Serial.print("Motor Power: ");
+  Serial.print(((float) intensity / 255) * 100);
+  Serial.println("%");
+  
+}
 void setup() {
   motor_mode = CH_INT;
   incButtonActiveMSCount = 0;
@@ -176,6 +198,7 @@ void loop() {
   if (both_button_pressed)
   {
     changeMode();
+    Serial.println("-----------------------------------------------------------------"); 
     dec_button_pressed = false;
     inc_button_pressed = false;
     both_button_pressed = false;
@@ -183,10 +206,11 @@ void loop() {
     decButtonReleasedMSCount = 0;
     incButtonActiveMSCount = 0;
     incButtonReleasedMSCount = 0;
+    monitor_output();
   }
   else if (dec_button_pressed && !inc_button_pressed)
   {
-   Serial.println("press dec button");
+   //Serial.println("press dec button");
     if (motor_mode == CH_ROT)
     {
       if (rotation == ROT_CCW)
@@ -209,10 +233,11 @@ void loop() {
     dec_button_pressed = false;
     decButtonActiveMSCount = 0;
     decButtonReleasedMSCount = 0;
+    monitor_output();
   }
   else if (!dec_button_pressed && inc_button_pressed)
   {
-    Serial.println("press inc button");
+    //Serial.println("press inc button");
     if (motor_mode == CH_ROT)
     {
       if (rotation == ROT_CW)
@@ -235,14 +260,17 @@ void loop() {
     inc_button_pressed = false;
     incButtonActiveMSCount = 0;
     incButtonReleasedMSCount = 0;
+    monitor_output();
+
+    
   }
   analogWrite(motor_pwm, intensity);
-  /*switch (motor_mode)
+  switch (motor_mode)
   {
-    case CH_ROT: analogWrite(led, GREEN); break;
-    case CH_INT: analogWrite(led, RED); break;
+    case CH_ROT: analogWrite(led_green, 255); analogWrite(led_red,0); break;
+    case CH_INT: analogWrite(led_green, 0); analogWrite(led_red,255);; break;
     default: break;
-  }*/
+  }
   switch (rotation)
   {
     case ROT_CW: digitalWrite(motor_input_2, HIGH); break;
