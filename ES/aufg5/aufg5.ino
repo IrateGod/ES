@@ -1,4 +1,5 @@
 #include <SPI.h>
+#include <DueTimer.h>
 
 int reset_pin = 9;
 int sce_pin = 10;
@@ -102,6 +103,11 @@ unsigned char font[95][6] = {
   { 0x00, 0x41, 0x36, 0x08, 0x00, 0x00 }, // }
   { 0x10, 0x08, 0x08, 0x10, 0x08, 0x00 } // ~
 };
+DueTimer demoTimer;
+int currentStudent = 0;
+int demo_count = 0;
+bool draw_ready = false;
+
 
 void setup() {
   Serial.begin(115200);
@@ -123,23 +129,11 @@ void setup() {
   SPI.transfer(sce_pin, 0x80);
   digitalWrite(dc_pin, HIGH);
 
-  setChar(0, 0, 'H');
-  setChar(0, 6, 'e');
-  setChar(0, 12, 'l');
-  setChar(0, 18, 'l');
-  setChar(0, 24, 'o');
-  setChar(0, 30, ' ');
-  setChar(0, 36, 'W');
-  setChar(0, 42, 'o');
-  setChar(0, 48, 'r');
-  setChar(0, 54, 'l');
-  setChar(0, 60, 'd');
-
-  setString(8, 0, "Hello World");
-
   drawDisplay();
   
   SPI.endTransaction();
+
+  demoTimer.configure(1, runStudentIdDemo);
 
 }
 
@@ -174,7 +168,6 @@ void setChar(int y, int x, char c)
 
   for (int xAddr = 0; xAddr < 6; xAddr++)
   {
-    Serial.println(fontChar[xAddr]);
     setPixel(y, x + xAddr, fontChar[xAddr] & 1);
     setPixel(y + 1, x + xAddr, fontChar[xAddr] & 2);
     setPixel(y + 2, x + xAddr, fontChar[xAddr] & 4);
@@ -217,6 +210,7 @@ void drawDisplay()
     }
   }
   SPI.endTransaction();
+  draw_ready = false;
 }
 
 void loadingDemo()
@@ -242,6 +236,49 @@ void loadingDemo()
   }
 }
 
+void runStudentIdDemo()
+{
+  demo_count++;
+  Serial.print("demo counter ");
+  Serial.println(demo_count);
+  if (demo_count > 4)
+  {
+    int yOffset = 13;
+    setString(yOffset, 0, "              ");
+    if (currentStudent)
+    {
+      setString(yOffset, 3, "Ferris Braatz");
+      setString(yOffset + 11, 21, "6814372");
+      currentStudent = 0;
+    } else
+    {
+      setString(yOffset, 6, "Artur Alberg");
+      setString(yOffset + 11, 21, "6705840");
+      currentStudent = 1;
+    }
+    draw_ready = true;
+    demo_count = 0;
+  }
+}
+
 void loop() {
-  
+  if (Serial.available() > 0)
+  {
+    String input = Serial.readString();
+    input.trim();
+    if (input.startsWith("runStudentIdDemo()") && input.endsWith("runStudentIdDemo()"))
+    {
+      demo_count = 0;
+      demoTimer.start();
+    }
+    else if (input.startsWith("stopDemo()") && input.endsWith("stopDemo()"))
+    {
+      demo_count = 0;
+      demoTimer.stop();
+    }
+  }
+  if (draw_ready)
+  {
+    drawDisplay();
+  }
 }
