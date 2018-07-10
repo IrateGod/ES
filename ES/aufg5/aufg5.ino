@@ -1,5 +1,6 @@
 #include <SPI.h>
 #include <DueTimer.h>
+#include <SD.h>
 
 int reset_pin = 9;
 int sce_pin = 10;
@@ -104,13 +105,16 @@ unsigned char font[95][6] = {
   { 0x10, 0x08, 0x08, 0x10, 0x08, 0x00 } // ~
 };
 DueTimer demoTimer;
+DueTimer rotatingTimer;
 int currentStudent = 0;
 int demo_count = 0;
+int rot_count = 0;
 bool draw_ready = false;
 
 
 void setup() {
   Serial.begin(115200);
+  SD.begin(4);
   pinMode(reset_pin, OUTPUT);
   pinMode(dc_pin, OUTPUT);
   digitalWrite(reset_pin, LOW);
@@ -134,6 +138,7 @@ void setup() {
   SPI.endTransaction();
 
   demoTimer.configure(1, runStudentIdDemo);
+  rotatingTimer.configure(10, runRotatingBarDemo);
 
 }
 
@@ -239,8 +244,6 @@ void loadingDemo()
 void runStudentIdDemo()
 {
   demo_count++;
-  Serial.print("demo counter ");
-  Serial.println(demo_count);
   if (demo_count > 4)
   {
     int yOffset = 13;
@@ -261,20 +264,345 @@ void runStudentIdDemo()
   }
 }
 
-void loop() {
+void help()
+{
+  Serial.println("setContrast(value): Einstellung  des  Kontrastes  des  LC-Displays. Wertebereich von Value 0,0 - 1,0");
+  Serial.println("clearDisplay(): Leert die LCD-Anzeige");
+  Serial.println("runRotatingBarDemo(): EIne Demo, die einen Rotierenenden Balken auf dem LCD_Display erzeugt");
+  Serial.println("runStudentIdDemo(): Zeigt nacheinander im 5 sek Abstand die Namen und Matrikelnummern der Gruppenmitglieder auf dem LCD Display");
+  Serial.println("stopDemo(): Stoppt die Anzeige der Demofunktionen");
+  Serial.println("listDirectory(<directory>): listet den Inhalt des angegebenen Verzeichnis auf");
+  Serial.println("doesFileExist(<fileName>): gibt an, ob angegebene Datei auf der SD-Karte existiert");
+  Serial.println("outputFileToSerial(<fileName>): gibt den Inhalt der angegebenen Datei im seriellen Monitor aus");
+  Serial.println("outputFileToLCD(<fileName>): gibt den Inhalt der angegebenen Datei im LCD aus");
+}
+
+void clearDisplay()
+{
+  for (int x = 0; x < 84; x++)
+  {
+    for (int y = 0; y < 48; y++)
+    {
+      setPixel(y, x, 0);
+    }
+  }
+  drawDisplay();
+}
+
+void runRotatingBarDemo()
+{
+  setString(12, 33, "   ");
+  setString(20, 33, "   ");
+  setString(28, 33, "   ");
+  switch (rot_count)
+  {
+    case 0: setString(20, 33, "---"); break;
+    case 2: setString(12, 39, "|");
+            setString(20, 39, "|");
+            setString(28, 39, "|"); break;
+    case 3: setString(28,33,"/");
+            setString(20,39,"/");
+            setString(12,45,"/"); break;
+    case 1: setString(28,45,"\\");
+            setString(20,39,"\\");
+            setString(12,33,"\\"); break;
+    default: break;
+  }
+  if (rot_count == 3)
+  {
+    rot_count = 0;
+  }
+  else
+  {
+    rot_count++;
+  }
+  draw_ready = true;
+}
+
+void setContrast(uint8_t contrast)
+{
+  contrast |= 0x80;
+  SPI.beginTransaction(sce_pin, SPISettings(freq, MSBFIRST, SPI_MODE0));
+  digitalWrite(dc_pin, LOW);
+  SPI.transfer(sce_pin, 0x21);
+  SPI.transfer(sce_pin, contrast);
+  SPI.transfer(sce_pin, 0x20);
+  digitalWrite(dc_pin, HIGH);
+  SPI.endTransaction();
+}
+
+boolean isInt(char c)
+{
+  return c >= 48 && c <= 57;
+}
+
+boolean validFloat(String str)
+{
+  String base;
+  String decimals;
+  if (!isInt(str.charAt(0)))
+  {
+    return false;
+  }
+  if (str.indexOf('.') > 0)
+  {
+    base = str.substring(0, str.indexOf('.'));
+    decimals = str.substring(str.indexOf('.') + 1);
+    Serial.println(base);
+    Serial.println(decimals);
+    for (int base_i = 0; base_i < base.length(); base_i++)
+    {
+      if (!isInt(base.charAt(base_i)))
+      {
+        return false;
+      }
+    }
+    for (int dec_i = 0; dec_i < decimals.length(); dec_i++)
+    {
+      if (!isInt(decimals.charAt(dec_i)))
+      {
+        return false;
+      }
+    }
+  }
+  else
+  {
+    for (int str_i = 1; str_i < str.length(); str_i++)
+    {
+      if (!isInt(str.charAt(str_i)))
+      {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+void printDirectory(File dir, int numTabs) {
+  while (true) {
+
+    File entry =  dir.openNextFile();
+    if (! entry) {
+      // no more files
+      break;
+    }
+    for (uint8_t i = 0; i < numTabs; i++) {
+      Serial.print('\t');
+    }
+    Serial.print(entry.name());
+    if (entry.isDirectory()) {
+      Serial.println("/");
+      printDirectory(entry, numTabs + 1);
+    } else {
+      // files have sizes, directories do not
+      Serial.print("\t\t");
+      Serial.println(entry.size(), DEC);
+    }
+    entry.close();
+  }
+}
+
+void loop() 
+{
   if (Serial.available() > 0)
   {
     String input = Serial.readString();
+    String param;
+    File entryFile;
     input.trim();
-    if (input.startsWith("runStudentIdDemo()") && input.endsWith("runStudentIdDemo()"))
+    if (input.equals("runStudentIdDemo()"))
     {
-      demo_count = 0;
+      demo_count = 5;
+      rotatingTimer.stop();
       demoTimer.start();
     }
-    else if (input.startsWith("stopDemo()") && input.endsWith("stopDemo()"))
+    else if (input.equals("stopDemo()"))
     {
       demo_count = 0;
+      clearDisplay();
       demoTimer.stop();
+      rotatingTimer.stop();
+    }
+    else if (input.equals("help()"))
+    {
+      help();
+    }
+    else if (input.equals("runRotatingBarDemo()"))
+    {
+      rot_count = 0;
+      demoTimer.stop();
+      rotatingTimer.start();
+    }
+    else if (input.startsWith("setContrast(") && input.endsWith(")"))
+    {
+      demoTimer.stop();
+      rotatingTimer.stop();
+      clearDisplay();
+      input = input.substring(12);
+      if (input.indexOf(")") >= 1)
+      {
+        param = input.substring(0, input.indexOf(")"));
+        if (validFloat(param))
+        {
+          setContrast((uint8_t) (param.toFloat() * 127));
+        }
+        else
+        {
+          Serial.print("Invalid value for parameter: ");
+          Serial.print(param);
+          Serial.println(", expected to be between 0.0 and 1.0");
+        }
+      }
+      else
+      {
+        Serial.println("Missing argument for setContrast, expected value between 0.0 and 1.0");
+      }
+    }
+    else if (input.startsWith("listDirectory(\"") && input.endsWith("\")"))
+    {
+      input = input.substring(15);
+      if (input.indexOf(")") >= -1)
+      {
+        param = input.substring(0, input.indexOf("\")"));
+        entryFile = SD.open(param);
+        printDirectory(entryFile, 0);
+      }
+    }
+    else if (input.startsWith("doesFileExist(\"") && input.endsWith("\")"))
+    {
+      input = input.substring(15);
+      if (input.indexOf(")") >= -1)
+      {
+        param = input.substring(0, input.indexOf("\")"));
+        entryFile = SD.open(param);
+        if (!entryFile)
+        {
+          Serial.print("Datei ");
+          Serial.print(param);
+          Serial.println(" existiert nicht.");
+        }
+        else
+        {
+          Serial.print("Datei ");
+          Serial.print(param);
+          Serial.println(" existiert.");
+        }
+        entryFile.close();
+      }
+    }
+    else if (input.startsWith("outputFileToSerial(\"") && input.endsWith("\")"))
+    {
+      input = input.substring(20);
+      if (input.indexOf(")") >= -1)
+      {
+        param = input.substring(0, input.indexOf("\")"));
+        entryFile = SD.open(param);
+        if (entryFile)
+        {
+          while (entryFile.available())
+          {
+            Serial.write(entryFile.read());
+          }
+        }
+        entryFile.close();
+      }
+    }
+    else if (input.startsWith("outputFileToLCD(\"") && input.endsWith("\")"))
+    {
+      input = input.substring(17);
+      if (input.indexOf(")") >= -1)
+      {
+        param = input.substring(0, input.indexOf("\")"));
+        char c;
+        entryFile = SD.open(param);
+        if (entryFile)
+        {
+          clearDisplay();
+          if (param.endsWith(".TXT") || param.endsWith(".txt"))
+          {
+            if (entryFile.size() > 84)
+            {
+              setString(0, 0, "TXT_SIZE_ERR");
+            }
+            else
+            {
+              int readCount = 0;
+              int yOffset = 0;
+              while (entryFile.available())
+              {
+                c = entryFile.read();
+                if (c == '\n')
+                {
+                  break;
+                }
+                setChar(yOffset, readCount * 6, c);
+                if (++readCount == 14)
+                {
+                  yOffset += 8;
+                  readCount = 0;
+                }
+              }
+            }
+          }
+          else if (param.endsWith(".IMG") || param.endsWith(".img"))
+          {
+            String xDimension;
+            String yDimension;
+            while (true)
+            {
+              c = entryFile.read();
+              if (c != ',')
+              {
+                xDimension += c;
+              }
+              else
+              {
+                break;
+              }
+            }
+            while (true)
+            {
+              c = entryFile.read();
+              if (c != '\n')
+              {
+                yDimension += c;
+              }
+              else
+              {
+                break;
+              }
+            }
+            int x_dim = xDimension.toInt();
+            int y_dim = yDimension.toInt();
+            int x_offset = (84 - x_dim) / 2;
+            int y_offset = (48 - y_dim) / 2;
+            while(entryFile.available())
+            {
+              for (int x = 0; x < x_dim; x++)
+              {
+                for (int y = 0; y < y_dim; y++)
+                {
+                  c = entryFile.read();
+                  setPixel(y_offset + y, x_offset + x, String(c).toInt());
+                  entryFile.read();
+                }
+              }
+            }
+          }
+          else
+          {
+            setString(0, 0, "invalid format");
+          }
+        }
+        entryFile.close();
+        draw_ready = true;
+      }
+    }
+    else
+    {
+      Serial.print("Invalid command: ");
+      Serial.print(input);
+      Serial.println(", please use help() to confirm available commands");
     }
   }
   if (draw_ready)
@@ -282,3 +610,4 @@ void loop() {
     drawDisplay();
   }
 }
+
