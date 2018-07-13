@@ -384,6 +384,7 @@ void printDirectory(File dir, int numTabs) {
     File entry =  dir.openNextFile();
     if (! entry) {
       // no more files
+      dir.rewindDirectory();
       break;
     }
     for (uint8_t i = 0; i < numTabs; i++) {

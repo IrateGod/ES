@@ -4,8 +4,8 @@
 
 int x_val;
 int y_val;
-int x_map;
-int y_map;
+int x_map = 90;
+int y_map = 90;
 int x_pin = 8;
 int y_pin = 9;
 int laser_power_pin = 27;
@@ -24,6 +24,7 @@ int joystickActiveMSCount = 0;
 int joystickReleasedMSCount = 0;
 int coordinates[128];
 int coord_len = 0;
+int interpol_step = 5;
 boolean isLaserSwitchPressed = false;
 boolean laser_switch_pressed = false;
 boolean isReplayPressed = false;
@@ -238,8 +239,30 @@ void handleServo(void)
   {
     x_val = analogRead(x_pin);
     y_val = analogRead(y_pin);
-    x_map = map(x_val, 1, 1023, 0, 180);
-    y_map = map(y_val, 1, 1023, 0, 180);
+    if (x_val < 450 || x_val > 550)
+    {
+      x_map += map(x_val, 1, 1023, -10, 10);
+    }
+    if (y_val < 450 || y_val > 550)
+    {
+      y_map += map(y_val, 1, 1023, -10, 10);
+    }
+    if (x_map < 0)
+    {
+      x_map = 0;
+    }
+    if (y_map < 0)
+    {
+      y_map = 0;
+    }
+    if (x_map > 180)
+    {
+      x_map = 180;
+    }
+    if (y_map > 180)
+    {
+      y_map = 180;
+    }
     gwsString = String(String(x_map) + "/" + String(y_map));
     pan.write(y_map);
     tilt.write(x_map);
@@ -424,6 +447,44 @@ void loop() {
     replay_pressed = false;
     for (int i = 0; i < coord_len; i += 2)
     {
+      int x_dif;
+      int y_dif;
+      int x_prev;
+      int y_prev;
+      int x_step;
+      int y_step;
+      int x_total;
+      int y_total;
+      if (i == 0)
+      {
+        x_prev = x_map;
+        y_prev = y_map;
+      }
+      else
+      {
+        y_prev = coordinates[i - 2];
+        x_prev = coordinates[i - 1];
+      }
+      y_dif = (coordinates[i] - y_prev);
+      x_dif = (coordinates[i + 1] - x_prev);
+      y_step = (int) abs(y_dif) / interpol_step;
+      x_step = (int) abs(x_dif) / interpol_step;
+      if (y_step > x_step)
+      {
+        x_step = y_step;
+      }
+      else
+      {
+        y_step = x_step;
+      }
+      y_total = y_dif / y_step;
+      x_total = x_dif / x_step;
+      for (int s = 0; s < y_step; s++)
+      {
+        pan.write(y_prev + (s * y_total));
+        tilt.write(x_prev + (s * x_total));
+        delay(30);
+      }
       pan.write(coordinates[i]);
       tilt.write(coordinates[i + 1]);
       gwsString = String(String(coordinates[i]) + "/" + String(coordinates[i+1]));
@@ -443,8 +504,8 @@ void loop() {
     }
     else
     {
-      coordinates[coord_len++] = map(analogRead(y_pin), 1, 1023, 0, 180);
-      coordinates[coord_len++] = map(analogRead(x_pin), 1, 1023, 0, 180);
+      coordinates[coord_len++] = y_map;
+      coordinates[coord_len++] = x_map;
     }
     joystick_pressed = false;
     joystickActiveMSCount = 0;
